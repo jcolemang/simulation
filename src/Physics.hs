@@ -20,7 +20,7 @@ module Physics ( PhysicsEntity ( calculateAcceleration
                ) where
 
 import Control.Lens
-import Control.Parallel.Strategies ( parList
+import Control.Parallel.Strategies ( parListChunk
                                    , using
                                    , rdeepseq
                                    , NFData
@@ -122,7 +122,7 @@ runStep :: (PhysicsEntity a, Eq a, NFData a) => Double -> [a] -> [a]
 runStep ts es =
   let collided = handleCollisions es
       entities = map (calculateNextPosition ts . calculateNextVelocity collided) collided
-  in entities `using` parList rdeepseq
+  in entities `using` parListChunk 250 rdeepseq
 
 
 newtype Steps = Steps Int
