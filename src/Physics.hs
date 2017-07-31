@@ -1,5 +1,6 @@
 
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE MultiWayIf #-}
 
 module Physics ( PhysicsEntity ( calculateAcceleration
                                , getVelocity
@@ -8,14 +9,22 @@ module Physics ( PhysicsEntity ( calculateAcceleration
                                , updatePosition
                                , getDistance
                                , positionDelta
+                               , getId
+                               , getRadius
                                )
                , SimulationResult
                , steps, states
                , Steps ( Steps )
+               , Timestep ( Timestep )
                , generateResult
                ) where
 
 import Control.Lens
+import Control.Parallel.Strategies ( parList
+                                   , using
+                                   , rdeepseq
+                                   , NFData
+                                   )
 
 
 -- | Helpers
@@ -32,6 +41,8 @@ class PhysicsEntity a where
   getPosition :: a -> (Double, Double)
   updateVelocity :: (Double, Double) -> a -> a
   updatePosition :: (Double, Double) -> a -> a
+  getId :: a -> Int
+  getRadius :: a -> Double
 
   getDistance :: a -> a -> Double
   getDistance a b =
@@ -41,6 +52,8 @@ class PhysicsEntity a where
   positionDelta :: a -> a -> (Double, Double)
   positionDelta a b = combineTuple (-) (getPosition a) (getPosition b)
 
+  collide :: a -> a -> [a]
+  collide a _ = [a]
 
 -- | Types
 
@@ -68,28 +81,59 @@ calculateNextVelocity es e =
 
 
 calculateNextPosition :: (PhysicsEntity a)
-                      => a
+                      => Double
                       -> a
-calculateNextPosition e =
+                      -> a
+calculateNextPosition ts e =
   let pos = getPosition e
-      vel = getVelocity e
-      newPos = combineTuple (+) pos vel
+      (velX, velY) = getVelocity e
+      newPos = combineTuple (+) pos (velX * ts, velY * ts)
   in updatePosition newPos e
+
+
+handleCollisions :: (PhysicsEntity a) => [a] -> [a]
+handleCollisions [] = []
+handleCollisions [x] = [x]
+handleCollisions (x:rest) =
+  let (new, old) = handleCollisionsHelper x rest
+      others = handleCollisions old
+  in mappend (x:new) others
+
+
+handleCollisionsHelper :: (PhysicsEntity a) => a -> [a] -> ([a], [a])
+handleCollisionsHelper _ [] = ([], [])
+handleCollisionsHelper x (y:rest) =
+  if detectCollision x y
+  then (collide x y, rest)
+  else let (new, old) = handleCollisionsHelper x rest
+       in (new, y:old)
+
+
+detectCollision :: (PhysicsEntity a) => a -> a -> Bool
+detectCollision a b =
+  let d = getDistance a b
+      threshold = getRadius a + getRadius b
+  in d < threshold
 
 
 -- | Simulation
 
-runStep :: (PhysicsEntity a, Eq a) => [a] -> [a]
-runStep es = map (calculateNextPosition . calculateNextVelocity es) es
+runStep :: (PhysicsEntity a, Eq a, NFData a) => Double -> [a] -> [a]
+runStep ts es =
+  let collided = handleCollisions es
+      entities = map (calculateNextPosition ts . calculateNextVelocity collided) collided
+  in entities `using` parList rdeepseq
 
 
 newtype Steps = Steps Int
-generateResult :: (Eq a, PhysicsEntity a)
+newtype Timestep = Timestep Double
+generateResult :: (Eq a, PhysicsEntity a, NFData a)
                => Steps
+               -> Timestep
                -> [a]
                -> SimulationResult a
-generateResult (Steps numSteps) startEntities =
+generateResult (Steps numSteps) (Timestep ts) startEntities =
   SimulationResult
-  { _states = take (numSteps + 1) $ iterate runStep startEntities
+  { _states = take (numSteps + 1) $ iterate (runStep ts) startEntities
   , _steps  = numSteps
   }

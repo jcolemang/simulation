@@ -3,14 +3,45 @@ module Main where
 import Entity
 import Logging
 import Physics
+import Control.Monad ( foldM
+                     )
+import Control.Monad.State ( evalState
+                           )
+import System.Random ( randomRs
+                     , newStdGen
+                     )
 
 
 main :: IO ()
 main =
-  let entities =
-        [ createEntity (ID 0) (Mass 1) (Radius 1) (Location (0, 0)) (Velocity (0, 0))
-        , createEntity (ID 1) (Mass 1) (Radius 1) (Location (1, 1)) (Velocity (0, 0))
-        ]
-      numSteps = 10
+  let numSteps = 100
+      timestep = 1
       outputPath = "output/simulation"
-  in writeFile outputPath $ generateLog . generateResult (Steps numSteps) $ entities
+      numEntities = 2500
+      bounds = 500
+  in do
+    putStrLn "Beginning execution."
+    g <- newStdGen
+    let xs = take numEntities $ randomRs (-bounds, bounds) g
+    g' <- newStdGen
+    let ys = take numEntities $ randomRs (-bounds, bounds) g'
+    g'' <- newStdGen
+    let masses = take numEntities $ randomRs (1, 20) g''
+    let randomLocations = zip3 xs ys masses
+    let entities = map
+                   (\(x, y, m) -> createEntity
+                              (Mass m)
+                              (Radius 1)
+                              (Location (x, y))
+                              (Velocity (0, 0)))
+                   randomLocations
+    let entityList = evalState
+                     (foldM (\ls sm -> sm >>= \e -> return (e:ls)) [] entities)
+                     0
+    putStrLn "Created entities, beginning simulation."
+    writeFile
+      outputPath $
+      generateLog (generateResult
+                   (Steps numSteps)
+                   (Timestep timestep)
+                   entityList)

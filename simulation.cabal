@@ -6,6 +6,10 @@ cabal-version:       >=1.10
 extra-source-files:  README.md
 
 executable simulation
+  ghc-options:
+               -O2
+               -threaded
+               -with-rtsopts=-N8
   hs-source-dirs:      src
   main-is:             Main.hs
   default-language:    Haskell2010
@@ -14,6 +18,8 @@ executable simulation
                      , mtl
                      , aeson
                      , bytestring
+                     , random
+                     , parallel
   other-modules:       Physics
                      , Entity
                      , Logging

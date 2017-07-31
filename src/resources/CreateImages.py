@@ -6,6 +6,7 @@ from PIL import Image
 from PIL import ImageDraw
 import imageio
 
+
 class Entity:
     def __init__(self, entity_id, location):
         self._id = entity_id
@@ -20,6 +21,7 @@ class Entity:
 
 
 def convert_object_to_entity(o):
+    print(o)
     return Entity(o['id'], o['location'])
 
 
@@ -61,7 +63,10 @@ def main():
         for filename in filenames:
             image = imageio.imread(filename)
             writer.append_data(image)
-            os.remove(filename)
+
+    print('Removing image files')
+    for filename in filenames:
+        os.remove(filename)
 
 
 

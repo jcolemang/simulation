@@ -1,6 +1,8 @@
 
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Entity ( Entity
               , ID ( ID )
@@ -12,6 +14,8 @@ module Entity ( Entity
               , createEntity
               ) where
 
+import GHC.Generics ( Generic
+                    )
 import Control.Lens ( view
                     , over
                     , makeLenses
@@ -23,6 +27,8 @@ import Physics ( PhysicsEntity ( calculateAcceleration
                                , updatePosition
                                , getDistance
                                , positionDelta
+                               , getId
+                               , getRadius
                                )
                )
 import Data.Aeson ( ToJSON
@@ -30,6 +36,9 @@ import Data.Aeson ( ToJSON
                   , object
                   , (.=)
                   )
+import Control.Parallel.Strategies ( NFData
+                                   )
+import Control.Monad.State
 
 newtype ID       = ID Int
 newtype Mass     = Mass Double
@@ -38,19 +47,19 @@ newtype Location = Location (Double, Double)
 newtype Velocity = Velocity (Double, Double)
 
 data Entity = Entity
-  { _entityId :: Int
-  , _mass     :: Double
-  , _radius   :: Double
-  , _location :: (Double, Double)
-  , _velocity :: (Double, Double)
-  }
+  { _entityId :: !Int
+  , _mass     :: !Double
+  , _radius   :: !Double
+  , _location :: !(Double, Double)
+  , _velocity :: !(Double, Double)
+  } deriving (Show, Generic, NFData)
 
 makeLenses ''Entity
+
 
 instance Eq Entity where
   e1 == e2 =
     view entityId e1 == view entityId e2
-
 
 instance PhysicsEntity Entity where
   calculateAcceleration a b =
@@ -63,7 +72,8 @@ instance PhysicsEntity Entity where
   getPosition = view location
   updateVelocity = over velocity . const
   updatePosition pos = over location (const pos)
-
+  getRadius = view radius
+  getId = view entityId
 
 instance ToJSON Entity where
   toJSON e =
@@ -75,7 +85,6 @@ instance ToJSON Entity where
            ]
 
 
-
 distance :: Entity -> Entity -> Double
 distance e1 e2 =
   let (x1, y1) = view location e1
@@ -83,12 +92,14 @@ distance e1 e2 =
   in sqrt $ (x1 - x2) ^ (2::Int) + (y1 - y2) ^ (2::Int)
 
 
-createEntity :: ID -> Mass -> Radius -> Location -> Velocity -> Entity
-createEntity (ID x) (Mass m) (Radius r) (Location l) (Velocity v) =
-  Entity
-  { _entityId = x
-  , _mass = m
-  , _radius = r
-  , _location = l
-  , _velocity = v
-  }
+createEntity :: Mass -> Radius -> Location -> Velocity -> State Int Entity
+createEntity (Mass m) (Radius r) (Location l) (Velocity v) = do
+  currId <- get
+  put $ currId + 1
+  return Entity
+    { _entityId = currId
+    , _mass = m
+    , _radius = r
+    , _location = l
+    , _velocity = v
+    }
