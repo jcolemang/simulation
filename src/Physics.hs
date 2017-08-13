@@ -11,6 +11,7 @@ module Physics ( PhysicsEntity ( calculateAcceleration
                                , positionDelta
                                , getId
                                , getRadius
+                               , collide
                                )
                , SimulationResult
                , steps, states
@@ -20,6 +21,7 @@ module Physics ( PhysicsEntity ( calculateAcceleration
                ) where
 
 import Control.Lens
+import Control.Monad
 import Control.Parallel.Strategies ( parListChunk
                                    , using
                                    , rdeepseq
@@ -52,8 +54,9 @@ class PhysicsEntity a where
   positionDelta :: a -> a -> (Double, Double)
   positionDelta a b = combineTuple (-) (getPosition a) (getPosition b)
 
-  collide :: a -> a -> [a]
-  collide a _ = [a]
+  collide :: [a] -> [a]
+  collide = id
+
 
 -- | Types
 
@@ -91,23 +94,14 @@ calculateNextPosition ts e =
   in updatePosition newPos e
 
 
-handleCollisions :: (PhysicsEntity a) => [a] -> [a]
-handleCollisions [] = []
-handleCollisions [x] = [x]
-handleCollisions (x:rest) =
-  let (new, old) = handleCollisionsHelper x rest
-      others = handleCollisions old
-  in mappend (x:new) others
-
-
-handleCollisionsHelper :: (PhysicsEntity a) => a -> [a] -> ([a], [a])
-handleCollisionsHelper _ [] = ([], [])
-handleCollisionsHelper x (y:rest) =
-  if detectCollision x y
-  then (collide x y, rest)
-  else let (new, old) = handleCollisionsHelper x rest
-       in (new, y:old)
-
+handleCollisions :: (Eq a, PhysicsEntity a) => a -> [a] -> [a]
+handleCollisions x xs =
+  let colliding = filter (detectCollision x) xs
+  in case colliding of
+    [a] -> [a]
+    cs -> if all (\i -> getId x >= getId i) cs
+          then collide cs
+          else [] -- someone else will be dealing with it
 
 detectCollision :: (PhysicsEntity a) => a -> a -> Bool
 detectCollision a b =
@@ -120,7 +114,8 @@ detectCollision a b =
 
 runStep :: (PhysicsEntity a, Eq a, NFData a) => Double -> [a] -> [a]
 runStep ts es =
-  let collided = handleCollisions es
+  -- let collided = handleCollisions es
+  let collided = join $ map (`handleCollisions` es) es
       entities = map (calculateNextPosition ts . calculateNextVelocity collided) collided
   in entities `using` parListChunk 250 rdeepseq
 

@@ -15,10 +15,10 @@ import System.Random ( randomRs
 main :: IO ()
 main =
   let numSteps = 100
-      timestep = 1
+      timestep = 0.25
       outputPath = "output/simulation"
-      numEntities = 2500
-      bounds = 500
+      numEntities = 350
+      bounds = 1000
   in do
     putStrLn "Beginning execution."
     g <- newStdGen
